@@ -16,7 +16,6 @@ int lfs_read( const char *, char *, size_t, off_t, struct fuse_file_info * );
 int lfs_release(const char *path, struct fuse_file_info *fi);
 int lsf_write(const char *, const char *, size_t, off_t, struct fuse_file_info *);
 int lsf_rename(const char *from, const char *to);
-FILE *flog;
 
 static struct fuse_operations lfs_oper = {
 	.getattr	= lfs_getattr,
@@ -36,16 +35,35 @@ static struct fuse_operations lfs_oper = {
 
 int lfs_getattr( const char *path, struct stat *stbuf ) {
 	int res = 0;
-	printf("getattr: (path=%s)\n", path);
+	printf("getattr: (path=%s)\n", path); 	// Hvis vi mounter filsystemet med -f så printer den!
+											// Hvis vi mounter med -d så får vi en debug prompt
 
 	memset(stbuf, 0, sizeof(struct stat));
-	if( strcmp( path, "/" ) == 0 || is_dir(path) == 1) {
+	if( strcmp( path, "/" ) == 0) {
 		stbuf->st_mode = S_IFDIR | 0755;
 		stbuf->st_nlink = 2;
-	} else if( is_file(path) == 1 ) {
-		stbuf->st_mode = S_IFREG | 0777;
-		stbuf->st_nlink = 1;
-		stbuf->st_size = 12;
+	} else if( /* CHECK if file exist in file structure*/ ) {
+		if (/* CHECK if file is a FILE */) {
+			stbuf->st_mode = S_IFREG | 0777;
+			stbuf->st_nlink = 1;
+		} else if ( /* CHECK if file is a DIRECTORY */) {
+			stbuf->st_mode = S_IFDIR | 0755;
+			stbuf->st_nlink = 2;
+		} else {
+			res = -ENOENT;
+		}
+		// alt det her under er taget fra videoen, men det er nok ting stat structet skal bruge.
+		// vi skal dog nok lige tjekke op på hvad det er :)
+		// han bruger attributes som han har i sin found_file struct, og det har jeg ikke skrevet med
+		// det skal vi nok også implementere
+		stbuf->st_nlink = 1; 	// det her er i hans video, men jeg tror det er forkert. Jeg forklarer senere.
+								// nå så ud til han opdagede fejlen, men rettede den ikke :D
+		stbuf->st_size = /* filstørrelsen på den fundne fil */
+		stbuf->st_uid = /* owner id */
+		stbuf->st_gid = /* owner id */
+		stbuf->st_atime = /* last access time */
+		stbuf->st_mtime = /* last modified time */
+		// free found file struct, hvis vi implementerer det?
 	} else
 		res = -ENOENT;
 
@@ -72,10 +90,10 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
 
 //Permission
 int lfs_open( const char *path, struct fuse_file_info *fi ) {
-	flog = fopen("/tmp/lfs.log", "a+");
-    fprintf(flog, "open: (path=%s)\n", path);
-    fprintf(flog, "open: (path=%d)\n", fi->flags);
-    fclose(flog);
+    printf("open: (path=%s)\n", path);
+
+    // når vi åbner filen er det smart at gemme sin file info struct i fi->fh, da man så ikke behøver at søge
+    // efter den hver gang man skal bruge den senere i read og write
 	return 0;
 }
 

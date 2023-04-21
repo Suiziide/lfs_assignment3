@@ -18,19 +18,19 @@ int lsf_write(const char *, const char *, size_t, off_t, struct fuse_file_info *
 int lsf_rename(const char *from, const char *to);
 
 static struct fuse_operations lfs_oper = {
-    .getattr    = lfs_getattr,
-    .readdir    = lfs_readdir,
-    .mknod = lsf_mknod,
-    .mkdir = lfs_mkdir,
-    .unlink = lsf_unlink,
-    .rmdir = lsf_rmdir,
-    .truncate = lsf_truncate,
-    .open   = lfs_open,
-    .read   = lfs_read,
-    .release = lfs_release,
-    .write = lsf_write,
-    .rename = lsf_rename,
-    .utime = NULL
+    .getattr		= lfs_getattr,
+    .readdir    	= lfs_readdir,
+    .mknod 		= lsf_mknod,
+    .mkdir 		= lfs_mkdir,
+    .unlink 		= lsf_unlink,
+    .rmdir 		= lsf_rmdir,
+    .truncate 		= lsf_truncate,
+    .open   		= lfs_open,
+    .read   		= lfs_read,
+    .release 		= lfs_release,
+    .write 		= lsf_write,
+    .rename 		= lsf_rename,
+    .utime		= NULL
 };
 
 int lfs_getattr( const char *path, struct stat *stbuf ) {
@@ -69,6 +69,63 @@ int lfs_getattr( const char *path, struct stat *stbuf ) {
 
     return res;
 }
+
+struct lfs_entry *findTokenInCurrent(struct lfs_entry current, char *token) {
+	struct linkedlist subdirs = current.subDirs;
+	struct lfs_entry current = subdirs.head; // first element of linkedlist
+	while(current != NULL && !strcmp(current.name, token)) {
+		current = current.next;
+	}
+	return current;
+}	
+
+int mkdir(whatever args) {
+    	
+	char *token = strtok(path, "/");
+	bool seekOp = true;
+	struct lfs_entry *current = root;
+	char tmp[FILENAME_SIZE];
+	while(token != NULL) {
+		strncpy(tmp, token, strlen(token));
+		if (!(current = findTokenInCurrent(current, token))) {
+			seekOp = false;
+			token = strtok(NULL, "/");
+			break;
+		} 
+		token = strtok(NULL, "/");
+	}
+	if (!seekOp && token == NULL) {
+		// allocate new thing
+		// new_entry.previous = current.subdirlist.tail 
+		// current.subdirlist.tail.next = new_entry
+		// current.subdirlist.tail = new_entry
+		// current.size++;
+		
+		// set attributes of the directory
+		// new_entry.name = tmp;
+		// new_entry.size = SOMESIZE;
+		// new_entry.isFile = false;
+		// new_entry.access_time = time(NULL);
+		// new_entry.mod_time = time(NULL);
+		// new_entry.id = GENERATEID();
+		// new_entry.files = NULL;
+		// new_entry.subDirs = NULL;
+
+		//current.subdirlist->tail = malloc(sizeof(stru))
+	} else {
+		return -EEXIST
+	}
+	return 0;
+}
+
+
+
+
+
+
+
+
+
 
 int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi ) {
 //  (void) offset;

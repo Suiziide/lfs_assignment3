@@ -14,7 +14,7 @@ LIBS := $(addprefix -l,$(LIBS))
 all: lfs
 
 %.o: %.c
-	$(GCC) $(CFLAGS) -c -o $@ $<
+	$(GCC) $(CFLAGS) -g -Wall -Wextra -c -o $@ $<
 
 lfs: $(OBJS)
 	$(GCC) $(OBJS) $(LIBS) $(CFLAGS) -o lfs

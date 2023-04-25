@@ -46,8 +46,7 @@ struct lfs_entry {
     size_t size;
     bool isFile; 
     char *contents;     //file attribute (isFile)
-    struct LinkedList *files;   //directory attribute (!isFile)
-    struct LinkedList *subDirs; //directory attribute (!isFile)
+    struct LinkedList *entries; //directory attribute (!isFile)
     int id;                 //metadata
     u_int64_t access_time;  //metadata
     u_int64_t mod_time;     //metadata
@@ -85,7 +84,8 @@ struct LinkedListNode *findEntry(const char *path) {
     char *token = strtok(current_path, "/");
     printf("Token: %s\n", token);
     printf("Current name: %s\n", current->entry->name);
-while (token != NULL) {
+
+    while (token != NULL) {
         current = findTokenInCurrent(current, token);
         token = strtok(NULL, "/");
         printf("Token: %s\n", token);
@@ -133,8 +133,7 @@ int lfs_getattr(const char *path, struct stat *stbuf) {
 struct LinkedListNode *findTokenInCurrent(struct LinkedListNode *current, char *token) {
     printf("----------find-token----------\n");
     printf("Current name: %s\n", current->entry->name);
-
-	current = current->entry->subDirs->head;
+	current = current->entry->entries->head;
 
     if (current == NULL) { 
         printf("Current does not exist\n");
@@ -145,8 +144,9 @@ struct LinkedListNode *findTokenInCurrent(struct LinkedListNode *current, char *
 	while (current != NULL && strcmp(current->entry->name, token) != 0) {
         printf("Token: %s\n", token);
         printf("Current name: %s\n", current->entry->name);
-		current = current->next;
+        current = current->next;
 	}
+
     if (!current) { printf("Token not found current == NULL\n"); }
     printf("----------find-token----------\n");
 	return current;
@@ -166,23 +166,15 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
     filler(buf, ".", NULL, 0);
     filler(buf, "..", NULL, 0);
 
-    if (current->entry->subDirs) {
-        struct LinkedListNode *dirToAdd = current->entry->subDirs->head;
-        while (dirToAdd != NULL) {
-            printf("displaying this dir: %s\n", dirToAdd->entry->name);
-            filler(buf, dirToAdd->entry->name, NULL, 0);
-            dirToAdd = dirToAdd->next;
+    if (current->entry->entries) {
+        struct LinkedListNode *entryToAdd = current->entry->entries->head;
+        while (entryToAdd != NULL) {
+            printf("displaying this dir: %s\n", entryToAdd->entry->name);
+            filler(buf, entryToAdd->entry->name, NULL, 0);
+            entryToAdd = entryToAdd->next;
         }
     }
 
-    if (current->entry->files){
-        struct LinkedListNode *fileToAdd = current->entry->files->head;
-        while (fileToAdd != NULL) {
-            printf("displaying this file: %s\n", fileToAdd->entry->name);
-            filler(buf, fileToAdd->entry->name, NULL, 0);
-            fileToAdd = fileToAdd->next;
-        }
-    }
     printf("---------readdir----------\n");
     return 0;
 }
@@ -226,25 +218,21 @@ int lfs_mkdir(const char *path, mode_t mode) {
         new_node->entry->access_time = time(NULL);
         new_node->entry->mod_time = time(NULL);
         new_node->entry->id = 42; //FIX FUNCTION
-        new_node->entry->files = malloc(sizeof(struct LinkedList));
-        new_node->entry->files->head = NULL;
-        new_node->entry->files->tail = NULL;
-        new_node->entry->files->num_entries = 0;
-        new_node->entry->subDirs = malloc(sizeof(struct LinkedList));
-        new_node->entry->subDirs->head = NULL;
-        new_node->entry->subDirs->tail = NULL;
-        new_node->entry->subDirs->num_entries = 0;
+        new_node->entry->entries = malloc(sizeof(struct LinkedList));
+        new_node->entry->entries->head = NULL;
+        new_node->entry->entries->tail = NULL;
+        new_node->entry->entries->num_entries = 0;
         new_node->entry->parent = parent;
 
-        new_node->prev = parent->entry->subDirs->tail;
+        new_node->prev = parent->entry->entries->tail;
         if (new_node->prev) {
             new_node->prev->next = new_node; // actually parent->entry->subdirs->tail->next
         }
-        parent->entry->subDirs->tail = new_node;
-        if (!parent->entry->subDirs->head) {
-            parent->entry->subDirs->head = new_node;
+        parent->entry->entries->tail = new_node;
+        if (!parent->entry->entries->head) {
+            parent->entry->entries->head = new_node;
         }
-        ++parent->entry->subDirs->num_entries;
+        ++parent->entry->entries->num_entries;
     } else {
         free(current_path);
         return -EEXIST;
@@ -257,38 +245,85 @@ int lfs_mkdir(const char *path, mode_t mode) {
 int lsf_rmdir(const char *path){
     struct LinkedListNode *current = findEntry(path);
     if (!current) { return -ENOENT; }
-    if (current->entry->subDirs->num_entries != 0 || current->entry->files->num_entries != 0) { return -ENOTEMPTY; } // if there are files or dirs don't remove
+    if (current->entry->entries->num_entries != 0) { return -ENOTEMPTY; } // if there are files or dirs don't remove
 
     struct LinkedListNode *parent = current->entry->parent;
 
-    if (parent->entry->subDirs->num_entries == 1) { // current == head == tail
-        parent->entry->subDirs->head = NULL;
-        parent->entry->subDirs->tail = NULL;
-    } else if (current == parent->entry->subDirs->head) { // current == head and more elements 
-        parent->entry->subDirs->head = current->next;
+    if (parent->entry->entries->num_entries == 1) { // current == head == tail
+        parent->entry->entries->head = NULL;
+        parent->entry->entries->tail = NULL;
+    } else if (current == parent->entry->entries->head) { // current == head and more elements 
+        parent->entry->entries->head = current->next;
         current->next->prev = NULL;
-    } else if (current == parent->entry->subDirs->tail) { // current == tail and previous elements
-        parent->entry->subDirs->tail = current->prev;
+    } else if (current == parent->entry->entries->tail) { // current == tail and previous elements
+        parent->entry->entries->tail = current->prev;
         current->prev->next = NULL;
     } else {
         current->prev->next = current->next;
         current->next->prev = current->prev;
     }
     
-    free(current->entry->files->head);
-    free(current->entry->files->tail);
-    free(current->entry->files);
-    free(current->entry->subDirs->head);
-    free(current->entry->subDirs->tail);
-    free(current->entry->subDirs);
+    free(current->entry->entries->head);
+    free(current->entry->entries->tail);
+    free(current->entry->entries);
     free(current->entry);
     free(current);
 
-    --parent->entry->subDirs->num_entries;    
+    --parent->entry->entries->num_entries;    
     return 0;
 }
 
-int lsf_mknod(const char *path, mode_t mode, dev_t device) {
+int lsf_mknod(const char *path, mode_t mode, dev_t device) { 
+    // s
+    size_t len = strlen(path) + 1;
+    char *current_path = malloc(len);
+    strncpy(current_path, path, len);
+    bool seekOp = true;
+    struct LinkedListNode *current = root;
+    char tmp[FILENAME_SIZE];
+    struct LinkedListNode *parent;
+    char *token = strtok(current_path, "/");
+
+    while (token != NULL) {
+        strncpy(tmp, token, strlen(token) + 1);
+        parent = current;
+        if (!(current = findTokenInCurrent(current, token))) {
+            seekOp = false;
+            token = strtok(NULL, "/");
+            break;
+        }
+        token = strtok(NULL, "/");
+    }
+    
+    if (!seekOp && token == NULL) {
+        struct LinkedListNode *new_node = malloc(sizeof(struct LinkedListNode));
+        new_node->entry = malloc(sizeof(struct lfs_entry));
+        if (!new_node->entry) { return -EFAULT; }
+        // set attributes of the directory
+        strcpy(new_node->entry->name, tmp);
+        new_node->entry->size = MAX_FILE_SIZE; //FIXME
+        new_node->entry->isFile = true;
+        new_node->entry->access_time = time(NULL);
+        new_node->entry->mod_time = time(NULL);
+        new_node->entry->id = 69; //FIXME - FUNCTION
+        new_node->entry->entries = NULL;
+        new_node->entry->contents = malloc(MAX_FILE_SIZE); // fixme?
+        memset(new_node->entry->contents, 's', 100); //FIXME
+
+        new_node->prev = parent->entry->entries->tail;
+        if (new_node->prev) {
+            new_node->prev->next = new_node; // actually parent->entry->subdirs->tail->next
+        }
+        parent->entry->entries->tail = new_node;
+        if (!parent->entry->entries->head) {
+            parent->entry->entries->head = new_node;
+        }
+        ++parent->entry->entries->num_entries;
+    } else {
+        free(current_path);
+        return -EEXIST;
+    }
+    free(current_path);
     return 0;
 }
 
@@ -319,9 +354,9 @@ int lfs_open( const char *path, struct fuse_file_info *fi ) {
 }
 
 int lfs_read( const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi ) {
-    printf("read: (path=%s)\n", path);
-    memcpy( buf, "Hello\n", 6 );
-    return 6;
+    struct LinkedListNode *file = findEntry(path);
+    memcpy(buf, file->entry->contents, MAX_FILE_SIZE); // FIXME
+    return 100; // FIXME to whetever is actually read
 }
 
 int lfs_release(const char *path, struct fuse_file_info *fi) {
@@ -338,14 +373,10 @@ int main( int argc, char *argv[] ) {
         root->entry->access_time = time(NULL);
         root->entry->mod_time = time(NULL);
         root->entry->id = 1; //FIXME FUNCTION
-        root->entry->files = malloc(sizeof(struct LinkedList));
-        root->entry->files->head = NULL;
-        root->entry->files->tail = NULL;
-        root->entry->files->num_entries = 0;
-        root->entry->subDirs = malloc(sizeof(struct LinkedList));
-        root->entry->subDirs->head = NULL;
-        root->entry->subDirs->tail = NULL;
-        root->entry->subDirs->num_entries = 0;
+        root->entry->entries = malloc(sizeof(struct LinkedList));
+        root->entry->entries->head = NULL;
+        root->entry->entries->tail = NULL;
+        root->entry->entries->num_entries = 0;
 
     fuse_main( argc, argv, &lfs_oper );
 

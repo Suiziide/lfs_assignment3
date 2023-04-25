@@ -27,10 +27,10 @@ struct LinkedListNode *findTokenInCurrent(struct LinkedListNode *current, char *
 static struct fuse_operations lfs_oper = {
     .getattr    = lfs_getattr,
     .readdir    = lfs_readdir,
-    .mknod      = lsf_mknod,
     .mkdir 	    = lfs_mkdir,
-    .unlink     = lsf_unlink,
     .rmdir 	    = lsf_rmdir,
+    .mknod      = lsf_mknod,
+    .unlink     = lsf_unlink,
     .truncate   = lsf_truncate,
     .open       = lfs_open,
     .read   	= lfs_read,
@@ -42,7 +42,7 @@ static struct fuse_operations lfs_oper = {
 
 struct lfs_entry { 
     char name[FILENAME_SIZE];
-    char *parent;
+    struct LinkedListNode *parent;
     size_t size;
     bool isFile; 
     char *contents;     //file attribute (isFile)
@@ -155,9 +155,12 @@ struct LinkedListNode *findTokenInCurrent(struct LinkedListNode *current, char *
 int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi ) {
     //  (void) offset;
     //  (void) fi;
-
+    printf("---------readdir----------\n");
     struct LinkedListNode *current;
-    if (!(current = findEntry(path))) { return -ENOENT; } // Exits if no entry
+    if (!(current = findEntry(path))) { 
+        printf("---------readdir----------\n");
+        return -ENOENT; 
+    } // Exits if no entry
 
     printf("readdir: (path=%s)\n", path);
     filler(buf, ".", NULL, 0);
@@ -166,6 +169,7 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
     if (current->entry->subDirs) {
         struct LinkedListNode *dirToAdd = current->entry->subDirs->head;
         while (dirToAdd != NULL) {
+            printf("displaying this dir: %s\n", dirToAdd->entry->name);
             filler(buf, dirToAdd->entry->name, NULL, 0);
             dirToAdd = dirToAdd->next;
         }
@@ -174,10 +178,12 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
     if (current->entry->files){
         struct LinkedListNode *fileToAdd = current->entry->files->head;
         while (fileToAdd != NULL) {
+            printf("displaying this file: %s\n", fileToAdd->entry->name);
             filler(buf, fileToAdd->entry->name, NULL, 0);
             fileToAdd = fileToAdd->next;
         }
     }
+    printf("---------readdir----------\n");
     return 0;
 }
 
@@ -228,6 +234,7 @@ int lfs_mkdir(const char *path, mode_t mode) {
         new_node->entry->subDirs->head = NULL;
         new_node->entry->subDirs->tail = NULL;
         new_node->entry->subDirs->num_entries = 0;
+        new_node->entry->parent = parent;
 
         new_node->prev = parent->entry->subDirs->tail;
         if (new_node->prev) {
@@ -247,6 +254,40 @@ int lfs_mkdir(const char *path, mode_t mode) {
     return 0;
 }
 
+int lsf_rmdir(const char *path){
+    struct LinkedListNode *current = findEntry(path);
+    if (!current) { return -ENOENT; }
+    if (current->entry->subDirs->num_entries != 0 || current->entry->files->num_entries != 0) { return -ENOTEMPTY; } // if there are files or dirs don't remove
+
+    struct LinkedListNode *parent = current->entry->parent;
+
+    if (parent->entry->subDirs->num_entries == 1) { // current == head == tail
+        parent->entry->subDirs->head = NULL;
+        parent->entry->subDirs->tail = NULL;
+    } else if (current == parent->entry->subDirs->head) { // current == head and more elements 
+        parent->entry->subDirs->head = current->next;
+        current->next->prev = NULL;
+    } else if (current == parent->entry->subDirs->tail) { // current == tail and previous elements
+        parent->entry->subDirs->tail = current->prev;
+        current->prev->next = NULL;
+    } else {
+        current->prev->next = current->next;
+        current->next->prev = current->prev;
+    }
+    
+    free(current->entry->files->head);
+    free(current->entry->files->tail);
+    free(current->entry->files);
+    free(current->entry->subDirs->head);
+    free(current->entry->subDirs->tail);
+    free(current->entry->subDirs);
+    free(current->entry);
+    free(current);
+
+    --parent->entry->subDirs->num_entries;    
+    return 0;
+}
+
 int lsf_mknod(const char *path, mode_t mode, dev_t device) {
     return 0;
 }
@@ -255,9 +296,6 @@ int lsf_unlink(const char *path){
     return 0;
 }
 
-int lsf_rmdir(const char *path){
-    return 0;
-}
 
 int lsf_truncate(const char *path, off_t offset){
     return 0;

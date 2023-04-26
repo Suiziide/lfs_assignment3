@@ -158,6 +158,7 @@ int makeEntry(const char *path, mode_t mode, bool isFile) {
         
         // set attributes of the entry
         strcpy(new_node->entry->name, tmp);
+        printf("name name name name name name:::::: %s\n", new_node->entry->name);
         new_node->entry->size = MAX_FILE_SIZE; // FIXME to dynamically change size
         new_node->entry->isFile = isFile;
         new_node->entry->access_time = time(NULL);
@@ -334,49 +335,42 @@ int lsf_write(const char *path, const char *buf, size_t size, off_t offset, stru
 }
 
 int lsf_rename(const char *from, const char *to) {
-    
-    // if (from path except last / is equal to to except last /)
-    //     findEntry(from)->entry->name = to after last /
-    // else   
-
     struct LinkedListNode *new_node = findEntry(to);
     if (new_node) { return -EEXIST; } // if new_node exists error
     struct LinkedListNode *old_node = findEntry(from);
-    if (!old_node) { return -ENOENT; } // if old_node exists error
-    
+    if (!old_node) { return -ENOENT; } // if old_node !exists error
+
     bool isFile = old_node->entry->isFile;
     int res;
     if ((res = makeEntry(to, 0, isFile))) { return res; }
     new_node = findEntry(to);
     if (!new_node) { return -ENOENT; } // if new_node does not exists error
-
-    if (!isFile) { // is dir 
-        printf("ITS IS DIR MY GUY!\n");
-        free(old_node->entry->entries); // frees preallocated LinkedList in new_node
-        printf("Size\n");
-        new_node->entry->size = old_node->entry->size;
-        // update parent size somehow
-        new_node->entry->entries = old_node->entry->entries; // "this" 
-        printf("entries\n");
+    
+    if (!isFile) {
+        printf("tmp set\n");
+        struct LinkedList *tmp = new_node->entry->entries;
+        printf("new set to old\n");
+        new_node->entry->entries = old_node->entry->entries;
+        printf("new id set to old id\n");
         new_node->entry->id = old_node->entry->id;
-        printf("id\n");
-        old_node->entry->entries = NULL; // does this update new_node pointer???
-        
-        printf("new_node->entry->entries\n");
-        printf("%d\n", new_node->entry->entries == NULL);
-        
-        printf("old->entry->entries = NULL\n");
-    } else { // is file
-        free(new_node->entry->contents);
+        printf("old set to tmp\n");
+        old_node->entry->entries = tmp;
+        printf("new size set to old size\n");
         new_node->entry->size = old_node->entry->size;
+        struct LinkedListNode *child = new_node->entry->entries->head;
+        while (child != NULL) {
+            printf("setting %s to new parent\n", child->entry->name);
+            child->entry->parent = new_node;
+            child = child->next;
+        }
+        lsf_rmdir(from);
+    } else {
+        char *tmp = new_node->entry->contents;
         new_node->entry->size = old_node->entry->size;
         new_node->entry->contents = old_node->entry->contents;
-        old_node->entry->contents = NULL;
-    }
-    removeEntry(old_node);
-    free(old_node->entry); 
-    free(old_node); 
-
+        old_node->entry->contents = tmp;
+        lsf_unlink(from);
+    } 
     return 0;
 }
 

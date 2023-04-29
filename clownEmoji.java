@@ -484,32 +484,51 @@ void dfsDelete(struct LinkedListNode* node) {
 }
 
 int loadFromDisk() { // FIXME - WIP
-    printf("############################################# xd");
     FILE *fp;
-    if ( access("disk.img", F_OK) > 0 ) { fp = fopen("disk.img", "r"); }
-    else { return 1; }
+    printf("LOADING FROM DISK\n#####################################\n");
+    if ( access("disk.img", F_OK) > 0 ) { //FIXME
+        printf("OPENED disk.img FOR LOADING\n#####################################\n"); 
+        fp = fopen("disk.img", "r"); } 
+    else { 
+        printf("FAILED TO OPEN disk.img FOR LOADING\n#####################################\n");
+        return 1; }
+        
     fseek(fp, 0, SEEK_END);
     int filesize = ftell(fp);
     rewind(fp);
     char fBuf[filesize];
     fgets(fBuf, filesize, fp);
     fclose(fp);
-    printf("######################\n %s \n######################", fBuf);
 
     struct LinkedListNode *current;
-    char *warningHeader, *path, *id, *name, *size, *isFile, *aTime, *mTime, *contents; //in order of appearance
-    warningHeader = strtok(fBuf, "|");
-    while ((path = strtok(NULL, "|"))) {    // FIXME
+    char *warningHeader, *path, *id, *name, *size, *isFile, *access_time, *mod_time, *contents; //in order of appearance
+    warningHeader = strtok(fBuf, "|"); // first token acquired from disk (not information) - the remaining tokens will be data of entries
+    while ((path = strtok(NULL, "|"))) {
         id = strtok(NULL, "|");
+// alt: if ((id = strtok(NULL, "|")) == NULL) { return ERROR?; }
         name = strtok(NULL, "|");
+// alt: if ((name = strtok(NULL, "|")) == NULL) { return ERROR?; }
         size = strtok(NULL, "|");
+// alt: if ((size = strtok(NULL, "|")) == NULL) { return ERROR?; }
         isFile = strtok(NULL, "|");
-        aTime = strtok(NULL, "|");
-        mTime = strtok(NULL, "|");
+// alt: if ((isFile = strtok(NULL, "|")) == NULL) { return ERROR?; }
+        access_time = strtok(NULL, "|");
+// alt: if ((access_time = strtok(NULL, "|")) == NULL) { return ERROR?; }
+        mod_time = strtok(NULL, "|");
+// alt: if ((mod_time = strtok(NULL, "|")) == NULL) { return ERROR?; }
         contents = strtok(NULL, "|");
+// alt: if ((contents = strtok(NULL, "|")) == NULL) { return ERROR?; }
         if(path != NULL && isFile[0] == '0') { makeEntry(path, false); }
         else if(path != NULL && isFile[0] == '1') { makeEntry(path, true); }
-        current = findEntry(path);
+// alt: if (isFile[0] == '0') { makeEntry(path, false) }
+// alt: else (isFile[0] == '1') { makeEntry(path, false) }
+        if ((current = findEntry(path)) != NULL) { 
+            current->entry->id = atoi(id);
+            current->entry->size = (size_t) atoi(size);
+            current->entry->access_time = (u_int64_t) atoi(access_time);
+            current->entry->mod_time = (u_int64_t) atoi(mod_time);
+            strcpy(current->entry->contents, contents);
+        }
     }
     return 0;
 }
@@ -517,14 +536,12 @@ int loadFromDisk() { // FIXME - WIP
 int main( int argc, char *argv[] ) {
 
     // try to load from disk
-    if(loadFromDisk() == 1) {   // xd
-                                //if (true) {     // xd
-                                // if can load do so
-                                // else new root {
+    // if can load do so
+    // else new root {
         root = malloc(sizeof(struct LinkedListNode));
         root->entry = malloc(sizeof(struct lfs_entry));
         strcpy(root->entry->name, "/");
-        root->entry->size = MAX_FILE_SIZE;
+        root->entry->size = MAX_FILE_SIZE; // 0 inititally - then updated with "loadFromDisk" if appropriate?
         root->entry->isFile = false;
         root->entry->access_time = time(NULL);
         root->entry->mod_time = time(NULL);
@@ -535,7 +552,7 @@ int main( int argc, char *argv[] ) {
         root->entry->entries->num_entries = 0;
         // } -> save to disk
 
-    }   // xd
+    loadFromDisk() // xd
 
     fuse_main( argc, argv, &lfs_oper );
 

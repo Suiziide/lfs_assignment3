@@ -515,9 +515,9 @@ int loadFromDisk() { // FIXME - WIP
     int i = 0;
     for (i = 2; i < filesize; ++i) {
 
-        printf("-> fBuf[i]: %c <-\n", fBuf[i]);
+        printf("-> fBuf[%d]: %c <-\n", i+1, fBuf[i]);
         if (fBuf[i] == '|') {
-            printf("\nindex: %d\n", i);
+            printf("index: %d\n", i);
             printf("oldPipe: %d\n", oldPipe);
             char temp[i-oldPipe];
             ++tokenType;

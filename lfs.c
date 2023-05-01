@@ -237,6 +237,7 @@ int removeEntry(struct LinkedListNode *current) {
 
 int rmThisEntry(struct LinkedListNode *current) {
     int result = removeEntry(current);
+    updateDirSizesToRoot(current->entry->parent, -current->entry->size);
     if (result < 0) { return result; }
     size_t pSize = current->entry->parent->entry->size;
     pSize = pSize - current->entry->size;
@@ -256,37 +257,24 @@ int rmThisEntry(struct LinkedListNode *current) {
     return 0;
 }
 
-void updateParentDirsSize(struct LinkedListNode* current, size_t oldSize, size_t size) {
-    struct LinkedListNode *parent = current->entry->parent;
-    while (parent != NULL) {
-        parent->entry->size -= oldSize - size;
-        parent = parent->entry->parent;
-    } 
-}
-
 void updateDirSizesToRoot(struct LinkedListNode *parent, size_t size) {
+    // printf("----------UPDATING-DIR-SIZES----------\n");
+    // printf("PARENT: %s\n", parent->entry->name);
+    // printf("SIZE: %ld\n", size);
     while (parent != NULL) {
-        printf("name: %s\n",parent->entry->name);
         parent->entry->size += size;
         parent = parent->entry->parent;
     }
-
+    // printf("----------UPDATING-DIR-SIZES----------\n");
 }
 
-void updateParentDirs(struct LinkedListNode *new_node, struct LinkedListNode *old_node) {
+void updateChildrenToParent(struct LinkedListNode *new_node) {
+    // printf("-----parent-update----\n");
     struct LinkedListNode *child = new_node->entry->entries->head;
-    struct LinkedListNode *parent = new_node->entry->parent;
-    // updates all old_node->entry->entries files and dirs' parents to point to new node 
     while (child != NULL) {
         child->entry->parent = new_node;
         child = child->next;
     }
-    // goes up the tree structure and updates the size attribure for the parents to old node and the parent for the new node
-    printf("NEWNODE---------------------------\n");
-    updateDirSizesToRoot(parent, new_node->entry->size);
-    printf("OLDNODE---------------------------\n");
-    parent = old_node->entry->parent;
-    updateDirSizesToRoot(parent, -old_node->entry->size);
 }
 
 void dfsDelete(struct LinkedListNode* node) {
@@ -335,6 +323,7 @@ int lfs_getattr(const char *path, struct stat *stbuf) {
             stbuf->st_nlink = 2; // plus numbers of subdirs??
         }
     } else { return -ENOENT; }
+    stbuf->st_ino = current->entry->id;
     stbuf->st_size = current->entry->size;
     stbuf->st_atime = current->entry->actime;
     stbuf->st_mtime = current->entry->modtime;
@@ -407,15 +396,16 @@ int lfs_truncate(const char *path, off_t offset) {
     }
     current->entry->contents[offset] = '\0';
     current->entry->size = offset;
-    updateParentDirsSize(current, oldSize, offset); 
+    updateDirSizesToRoot(current->entry->parent, -(oldSize - offset));
     return 0;
 }
 
 int lfs_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
-    printf("-------------WRITE-------------\n");
-    printf("Write: buffer = %s\n", buf);
-    printf("Write: size of buffer = %d\n", (int)size);
-    printf("Write: offset = %d\n", (int)offset);
+    // printf("-------------WRITE-------------\n");
+    // printf("Write: buffer = %s\n", buf);
+    // printf("Write: size of buffer = %d\n", (int)size);
+    // printf("Write: offset = %d\n", (int)offset);
+    
     struct LinkedListNode *current = fi->fh;
     size_t oldSize = current->entry->size;
     // Null terminates the buffer 
@@ -426,12 +416,14 @@ int lfs_write(const char *path, const char *buf, size_t size, off_t offset, stru
     // sets current files contents to null terminated buffer
     current->entry->contents = tmp;
     current->entry->size = size;
-    updateParentDirsSize(current, oldSize, size); 
+    current->entry->modtime = time(NULL);
+    updateDirSizesToRoot(current->entry->parent, -(oldSize - size));
     // printf("-------------WRITE-------------\n");
     return size;
 }
 
 int lfs_rename(const char *from, const char *to) {
+    // printf("---------rename----------\n");
     struct LinkedListNode *new_node = findEntry(to);
     if (new_node) { return -EEXIST; } // if new_node exists error
     struct LinkedListNode *old_node = findEntry(from);
@@ -446,18 +438,22 @@ int lfs_rename(const char *from, const char *to) {
     new_node->entry->size = old_node->entry->size;
     new_node->entry->actime = old_node->entry->actime;
     new_node->entry->modtime = old_node->entry->modtime;
+    updateDirSizesToRoot(new_node->entry->parent, new_node->entry->size); 
     if (!old_node->entry->isFile) {
+        // printf("-----dir-----\n");
         struct LinkedList *tmp = new_node->entry->entries;
         new_node->entry->entries = old_node->entry->entries;
         old_node->entry->entries = tmp;
-        updateParentDirs(new_node, old_node);
+        updateChildrenToParent(new_node);
         lfs_rmdir(from);
+        // printf("-----dir-----\n");
     } else {
         char *tmp = new_node->entry->contents;
         new_node->entry->contents = old_node->entry->contents;
         old_node->entry->contents = tmp;
         lfs_unlink(from);
     } 
+    // printf("---------rename----------\n");
     return 0;
 }
 

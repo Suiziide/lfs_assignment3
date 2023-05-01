@@ -9,17 +9,17 @@
 
 int lfs_getattr( const char *, struct stat * );
 int lfs_readdir( const char *, void *, fuse_fill_dir_t, off_t, struct fuse_file_info * );
-int lsf_mknod(const char *path, mode_t mode, dev_t device);
+int lfs_mknod(const char *path, mode_t mode, dev_t device);
 int lfs_mkdir(const char *path, mode_t mode);
-int lsf_unlink(const char *);
-int lsf_rmdir(const char *path);
-int lsf_truncate(const char *path, off_t offset);
+int lfs_unlink(const char *);
+int lfs_rmdir(const char *path);
+int lfs_truncate(const char *path, off_t offset);
 int lfs_open( const char *, struct fuse_file_info * );
 int lfs_read( const char *, char *, size_t, off_t, struct fuse_file_info * );
 int lfs_release(const char *path, struct fuse_file_info *fi);
-int lsf_write(const char *, const char *, size_t, off_t, struct fuse_file_info *);
-int lsf_rename(const char *from, const char *to);
-
+int lfs_write(const char *, const char *, size_t, off_t, struct fuse_file_info *);
+int lfs_rename(const char *from, const char *to);
+int lfs_utime(const char *filename, const struct utimbuf *times);
 struct LinkedListNode *findTokenInCurrent(struct LinkedListNode *current, char *token);
 
 
@@ -27,16 +27,16 @@ static struct fuse_operations lfs_oper = {
     .getattr    = lfs_getattr,
     .readdir    = lfs_readdir,
     .mkdir 	    = lfs_mkdir,
-    .rmdir 	    = lsf_rmdir,
-    .mknod      = lsf_mknod,
-    .unlink     = lsf_unlink,
-    .truncate   = lsf_truncate,
+    .rmdir 	    = lfs_rmdir,
+    .mknod      = lfs_mknod,
+    .unlink     = lfs_unlink,
+    .truncate   = lfs_truncate,
     .open       = lfs_open,
     .read   	= lfs_read,
     .release 	= lfs_release,
-    .write 	    = lsf_write,
-    .rename 	= lsf_rename,
-    .utime      = NULL
+    .write 	    = lfs_write,
+    .rename 	= lfs_rename,
+    .utime      = lfs_utime
 };
 
 struct lfs_entry { 
@@ -47,8 +47,8 @@ struct lfs_entry {
     char *contents;     //file attribute (isFile)
     struct LinkedList *entries; //directory attribute (!isFile)
     int id;                 //metadata
-    u_int64_t access_time;  //metadata
-    u_int64_t mod_time;     //metadata
+    u_int64_t actime;  //metadata
+    u_int64_t modtime;     //metadata
 };
 
 struct LinkedList {
@@ -157,11 +157,10 @@ int makeEntry(const char *path, bool isFile) {
         
         // set attributes of the entry
         strcpy(new_node->entry->name, tmp);
-        //printf("name name name name name name:::::: %s\n", new_node->entry->name);
-        new_node->entry->size = 0; // FIXME to dynamically change size
+        new_node->entry->size = 0;
         new_node->entry->isFile = isFile;
-        new_node->entry->access_time = time(NULL);
-        new_node->entry->mod_time = time(NULL);
+        new_node->entry->actime = time(NULL);
+        new_node->entry->modtime = time(NULL);
         new_node->entry->id = generateId();
         new_node->entry->parent = parent;
         if (!isFile) {
@@ -189,6 +188,9 @@ int makeEntry(const char *path, bool isFile) {
         return -EEXIST;
     }
     free(current_path);
+
+    
+
     
     // save to disk FIXME
     
@@ -254,6 +256,39 @@ int rmThisEntry(struct LinkedListNode *current) {
     return 0;
 }
 
+void updateParentDirsSize(struct LinkedListNode* current, size_t oldSize, size_t size) {
+    struct LinkedListNode *parent = current->entry->parent;
+    while (parent != NULL) {
+        parent->entry->size -= oldSize - size;
+        parent = parent->entry->parent;
+    } 
+}
+
+void updateDirSizesToRoot(struct LinkedListNode *parent, size_t size) {
+    while (parent != NULL) {
+        printf("name: %s\n",parent->entry->name);
+        parent->entry->size += size;
+        parent = parent->entry->parent;
+    }
+
+}
+
+void updateParentDirs(struct LinkedListNode *new_node, struct LinkedListNode *old_node) {
+    struct LinkedListNode *child = new_node->entry->entries->head;
+    struct LinkedListNode *parent = new_node->entry->parent;
+    // updates all old_node->entry->entries files and dirs' parents to point to new node 
+    while (child != NULL) {
+        child->entry->parent = new_node;
+        child = child->next;
+    }
+    // goes up the tree structure and updates the size attribure for the parents to old node and the parent for the new node
+    printf("NEWNODE---------------------------\n");
+    updateDirSizesToRoot(parent, new_node->entry->size);
+    printf("OLDNODE---------------------------\n");
+    parent = old_node->entry->parent;
+    updateDirSizesToRoot(parent, -old_node->entry->size);
+}
+
 void dfsDelete(struct LinkedListNode* node) {
     if (node == NULL) { return; }
     struct LinkedListNode *next = NULL;
@@ -282,7 +317,7 @@ int lfs_getattr(const char *path, struct stat *stbuf) {
     // printf("path is: %s\n", path);
     struct LinkedListNode *current = findEntry(path);
     if (current == NULL) { 
-    //     printf("Current was not found as entry\n");
+        //     printf("Current was not found as entry\n");
         return -ENOENT;
     }
     // printf("Current name: %s\n", current->entry->name);
@@ -301,8 +336,8 @@ int lfs_getattr(const char *path, struct stat *stbuf) {
         }
     } else { return -ENOENT; }
     stbuf->st_size = current->entry->size;
-    stbuf->st_atime = current->entry->access_time;
-    stbuf->st_mtime = current->entry->mod_time;
+    stbuf->st_atime = current->entry->actime;
+    stbuf->st_mtime = current->entry->modtime;
     // printf("----------getattr----------\n");
     return 0;
 }
@@ -324,11 +359,11 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
     if (current->entry->entries) {
         struct LinkedListNode *entryToAdd = current->entry->entries->head;
         while (entryToAdd != NULL) {
-      //       printf("displaying this dir: %s\n", entryToAdd->entry->name);
+            //       printf("displaying this dir: %s\n", entryToAdd->entry->name);
             filler(buf, entryToAdd->entry->name, NULL, 0);
-      //       printf("Trying to go to next\n");
+            //       printf("Trying to go to next\n");
             entryToAdd = entryToAdd->next;
-      //       printf("entry:::: %s\n", entryToAdd);
+            //       printf("entry:::: %s\n", entryToAdd);
         }
     }
 
@@ -340,21 +375,21 @@ int lfs_mkdir(const char *path, mode_t mode) {
     return makeEntry(path, false);
 }
 
-int lsf_rmdir(const char *path) {
+int lfs_rmdir(const char *path) {
     struct LinkedListNode *current = findEntry(path);
     return rmThisEntry(current);
 }
 
-int lsf_mknod(const char *path, mode_t mode, dev_t device) { 
+int lfs_mknod(const char *path, mode_t mode, dev_t device) { 
     return makeEntry(path, true);
 }
 
-int lsf_unlink(const char *path) {
+int lfs_unlink(const char *path) {
     struct LinkedListNode *current = findEntry(path);
     return rmThisEntry(current);
 }
 
-int lsf_truncate(const char *path, off_t offset) {
+int lfs_truncate(const char *path, off_t offset) {
     struct LinkedListNode *current = findEntry(path);
     if (current == NULL) { return -ENOENT; }
     if (!current->entry->isFile) { return -EISDIR; }
@@ -372,20 +407,11 @@ int lsf_truncate(const char *path, off_t offset) {
     }
     current->entry->contents[offset] = '\0';
     current->entry->size = offset;
-    
-    // updates the size of parent dirs 
-    struct LinkedListNode *parent = current->entry->parent;
-    printf("parent name: %s\n", parent->entry->name);
-    printf("current name: %s\n", current->entry->name);
-    while (parent != NULL) {
-        printf("parent name: %s\n", parent->entry->name);
-        parent->entry->size -= oldSize - offset;
-        parent = parent->entry->parent;
-    } 
+    updateParentDirsSize(current, oldSize, offset); 
     return 0;
 }
 
-int lsf_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
+int lfs_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
     printf("-------------WRITE-------------\n");
     printf("Write: buffer = %s\n", buf);
     printf("Write: size of buffer = %d\n", (int)size);
@@ -400,56 +426,37 @@ int lsf_write(const char *path, const char *buf, size_t size, off_t offset, stru
     // sets current files contents to null terminated buffer
     current->entry->contents = tmp;
     current->entry->size = size;
-    // updates size of parent dirs
-    struct LinkedListNode *parent = current->entry->parent;
-    printf("current name: %s\n", current->entry->name);
-    while (parent != NULL) {
-        printf("parent name: %s\n", parent->entry->name);
-        printf("Size: %d\n", parent->entry->size - (oldSize - size));
-        parent->entry->size -= oldSize - size;
-        printf("Parent size: %d\n", parent->entry->size);
-        parent = parent->entry->parent;
-    } 
+    updateParentDirsSize(current, oldSize, size); 
     // printf("-------------WRITE-------------\n");
     return size;
 }
 
-int lsf_rename(const char *from, const char *to) {
+int lfs_rename(const char *from, const char *to) {
     struct LinkedListNode *new_node = findEntry(to);
     if (new_node) { return -EEXIST; } // if new_node exists error
     struct LinkedListNode *old_node = findEntry(from);
     if (!old_node) { return -ENOENT; } // if old_node !exists error
 
-    bool isFile = old_node->entry->isFile;
-    int res;
-    if ((res = makeEntry(to, isFile))) { return res; }
+    int res = makeEntry(to, old_node->entry->isFile);
+    if (res) { return res; }
     new_node = findEntry(to);
     if (!new_node) { return -ENOENT; } // if new_node does not exists error
-    
-    if (!isFile) {
-        // printf("tmp set\n");
+
+    new_node->entry->id = old_node->entry->id;
+    new_node->entry->size = old_node->entry->size;
+    new_node->entry->actime = old_node->entry->actime;
+    new_node->entry->modtime = old_node->entry->modtime;
+    if (!old_node->entry->isFile) {
         struct LinkedList *tmp = new_node->entry->entries;
-        // printf("new set to old\n");
         new_node->entry->entries = old_node->entry->entries;
-        // printf("new id set to old id\n");
-        new_node->entry->id = old_node->entry->id;
-        // printf("old set to tmp\n");
         old_node->entry->entries = tmp;
-        // printf("new size set to old size\n");
-        new_node->entry->size = old_node->entry->size;
-        struct LinkedListNode *child = new_node->entry->entries->head;
-        while (child != NULL) {
-            // printf("setting %s to new parent\n", child->entry->name);
-            child->entry->parent = new_node;
-            child = child->next;
-        }
-        lsf_rmdir(from);
+        updateParentDirs(new_node, old_node);
+        lfs_rmdir(from);
     } else {
         char *tmp = new_node->entry->contents;
-        new_node->entry->size = old_node->entry->size;
         new_node->entry->contents = old_node->entry->contents;
         old_node->entry->contents = tmp;
-        lsf_unlink(from);
+        lfs_unlink(from);
     } 
     return 0;
 }
@@ -460,7 +467,7 @@ int lfs_open( const char *path, struct fuse_file_info *fi ) {
     // printf("ffopen: (path=%s)\n", path);
     struct LinkedListNode *foundFile;
     if (!(foundFile = findEntry(path))) { return -ENOENT; }
-    foundFile->entry->access_time = time(NULL);
+    foundFile->entry->actime = time(NULL);
     fi->fh = foundFile;
     // printf("File found and stored in fi->fh\n");
     // printf("----------open----------\n");
@@ -477,14 +484,21 @@ int lfs_read( const char *path, char *buf, size_t size, off_t offset, struct fus
 
 int lfs_release(const char *path, struct fuse_file_info *fi) {
     // printf("release: (path=%s)\n", path);
-    
+
     // When closing file save to disk???
 
     return 0;
 }
 
+int lfs_utime(const char *path, const struct utimbuf *times) {
+    struct LinkedListNode *current = findEntry(path);
+    current->entry->actime = times->actime;
+    current->entry->modtime = times->modtime;
+    return 0;
+}
+
 int main( int argc, char *argv[] ) {
-    
+
     // try to load from disk
 
     // if can load do so
@@ -496,8 +510,8 @@ int main( int argc, char *argv[] ) {
     root->entry->parent = NULL;
     root->entry->size = 0;
     root->entry->isFile = false;
-    root->entry->access_time = time(NULL);
-    root->entry->mod_time = time(NULL);
+    root->entry->actime = time(NULL);
+    root->entry->modtime = time(NULL);
     root->entry->id = generateId();
     root->entry->entries = malloc(sizeof(struct LinkedList));
     root->entry->entries->head = NULL;
@@ -506,10 +520,10 @@ int main( int argc, char *argv[] ) {
     // } -> save to disk
 
     fuse_main( argc, argv, &lfs_oper );
-    
+
     //save to disk
-     
+
     dfsDelete(root);
-    
+
     return 0;
 }

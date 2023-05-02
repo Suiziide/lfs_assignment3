@@ -97,11 +97,11 @@ int saveAux(struct LinkedListNode *node, FILE *fp, char *savePath){
     fprintf(fp, "%d|", node->entry->id);
     fprintf(fp, "%ld|", node->entry->size);
     fprintf(fp, "%ld|", node->entry->modtime);
-    fprintf(fp, "%ld|", node->entry->actime);
-    if (node->entry->contents != NULL && node->entry->size > 0) {
+    fprintf(fp, "%ld|", node->entry->actime); 
+    if (node->entry->isFile && node->entry->contents != NULL) {
         fprintf(fp, "%s", node->entry->contents);
     }
-    if (node->entry->entries) {
+    if (!node->entry->isFile && node->entry->entries) {
         if (!node->entry->entries->head == NULL) {
             struct LinkedListNode *child = node->entry->entries->head;
             while (child != NULL) {
@@ -110,6 +110,7 @@ int saveAux(struct LinkedListNode *node, FILE *fp, char *savePath){
             }
         }
     }
+    free(current_savePath);
     return 0;
 }
 
@@ -569,9 +570,9 @@ int lfs_write(const char *path, const char *buf, size_t size, off_t offset, stru
     struct LinkedListNode *current = (struct LinkedListNode*) fi->fh;
     size_t oldSize = current->entry->size;
     // Null terminates the buffer 
-    char* tmp = malloc(size + 1);
+    char* tmp = malloc(size+3); // +1
     if (tmp == NULL) { return -EFAULT; }
-    strcpy(tmp, buf);
+    strncpy(tmp, buf, size);
     tmp[size] = '\0'; 
     // sets current files contents to null terminated buffer
     free(current->entry->contents);
@@ -634,9 +635,10 @@ int lfs_open(const char *path, struct fuse_file_info *fi ) {
 int lfs_read(const char* path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
     struct LinkedListNode *file = (struct LinkedListNode*) fi->fh;
     if (!file->entry->isFile) { return -EISDIR; }
-    if (file->entry->contents == NULL) { return 0; }
-    memcpy(buf, file->entry->contents, file->entry->size);
-    return file->entry->size;
+    if (file->entry->contents == NULL || file->entry->size == 0) { return 0; }
+    size_t len = (file->entry->size < size) ? file->entry->size : size;
+    strncpy(buf, file->entry->contents, len);
+    return len;
 }
 
 int lfs_release(const char *path, struct fuse_file_info *fi) {
@@ -693,6 +695,6 @@ int main(int argc, char *argv[]) {
     if (res != 0) { return res; }
     fuse_main(argc, argv, &lfs_oper);
     saveTree(root);
-    dfsDelete(root);
+    // dfsDelete(root);
     return 0;
 }

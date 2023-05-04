@@ -120,7 +120,7 @@ struct LinkedListNode *findEntry(const char *path) {
     struct LinkedListNode *current = root;
     size_t len = strlen(path) + 1;
     char *current_path = malloc(len);
-    if (!current_path) { return -EFAULT; }
+    if (!current_path) { return NULL; }
     strncpy(current_path, path, len);
     current_path[len-1] = '\0';
     char *token = strtok(current_path, "/");

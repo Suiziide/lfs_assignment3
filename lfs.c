@@ -56,7 +56,7 @@ struct LinkedList {
     struct LinkedListNode *tail;
     size_t num_entries;
 };
-
+          
 struct LinkedListNode {
     struct LinkedListNode *next;
     struct LinkedListNode *prev;

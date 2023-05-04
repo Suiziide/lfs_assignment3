@@ -68,26 +68,18 @@ struct LinkedListNode *root;
 int CURRENT_ID = 0;
 
 // auxiliary methods
-int generateId() {
-    return CURRENT_ID++;
-}
+int generateId() { return CURRENT_ID++; }
 
 int saveAux(struct LinkedListNode *node, FILE *fp, char *savePath){
     if (node == NULL) { return 0; }
     size_t len;
-    if (node != root) {
-        len = strlen(savePath) + strlen(node->entry->name) + 2;
-    } else {
-        len = strlen(savePath) + strlen(node->entry->name) + 1;
-    }
+    if (node != root) { len = strlen(savePath) + strlen(node->entry->name) + 2; } 
+    else { len = strlen(savePath) + strlen(node->entry->name) + 1; }
     char *current_savePath = malloc(len);
     if (!current_savePath) { return -EFAULT; }
     strncpy(current_savePath, savePath, len);
     strcat(current_savePath, node->entry->name);
-
-    if (node != root) {
-        current_savePath = strcat(current_savePath, "/");
-    }
+    if (node != root) { current_savePath = strcat(current_savePath, "/"); }
     fprintf(fp, "|");
     fprintf(fp, "%s|" , current_savePath);
     fprintf(fp, "%d|", node->entry->isFile);
@@ -95,9 +87,7 @@ int saveAux(struct LinkedListNode *node, FILE *fp, char *savePath){
     fprintf(fp, "%ld|", node->entry->size);
     fprintf(fp, "%ld|", node->entry->modtime);
     fprintf(fp, "%ld|", node->entry->actime); 
-    if (node->entry->isFile && node->entry->contents != NULL) {
-        fprintf(fp, "%s", node->entry->contents);
-    }
+    if (node->entry->isFile && node->entry->contents != NULL) { fprintf(fp, "%s", node->entry->contents); }
     if (!node->entry->isFile && node->entry->entries) {
         if (node->entry->entries->head != NULL) {
             struct LinkedListNode *child = node->entry->entries->head;
@@ -126,9 +116,7 @@ int saveTree(struct LinkedListNode *root){
 }
 
 struct LinkedListNode *findEntry(const char *path) {
-    if (strcmp(path, "/") == 0) {
-        return root;
-    }
+    if (strcmp(path, "/") == 0) { return root; }
     struct LinkedListNode *current = root;
     size_t len = strlen(path) + 1;
     char *current_path = malloc(len);
@@ -189,7 +177,6 @@ int makeEntry(const char *path, bool isFile) {
             free(new_node);
             return -EFAULT; 
         }
-
         strcpy(new_node->entry->name, tmp);
         new_node->entry->size = 0;
         new_node->entry->isFile = isFile;
@@ -208,9 +195,7 @@ int makeEntry(const char *path, bool isFile) {
             new_node->entry->entries->head = NULL;
             new_node->entry->entries->tail = NULL;
             new_node->entry->entries->num_entries = 0;
-        } else {
-            new_node->entry->contents = NULL;
-        }
+        } else { new_node->entry->contents = NULL; }
 
         new_node->next = NULL;
         new_node->prev = parent->entry->entries->tail;

@@ -56,7 +56,7 @@ struct LinkedList {
     struct LinkedListNode *tail;
     size_t num_entries;
 };
-          
+
 struct LinkedListNode {
     struct LinkedListNode *next;
     struct LinkedListNode *prev;
@@ -66,7 +66,7 @@ struct LinkedListNode {
 
 // global variables 
 struct LinkedListNode *root;
-int CURRENT_ID = 0;
+int CURRENT_ID = 0;          
 
 // auxiliary methods
 int generateId() {

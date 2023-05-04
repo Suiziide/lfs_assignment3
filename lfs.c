@@ -399,9 +399,7 @@ int loadFromDisk() {
 // struct methods
 int lfs_getattr(const char *path, struct stat *stbuf) {
     struct LinkedListNode *current = findEntry(path);
-    if (current == NULL) { 
-        return -ENOENT;
-    }
+    if (current == NULL) { return -ENOENT; }
 
     memset(stbuf, 0, sizeof(struct stat));
     if (strcmp(path, "/") == 0) {
@@ -437,7 +435,6 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
             entryToAdd = entryToAdd->next;
         }
     }
-
     return 0;
 }
 

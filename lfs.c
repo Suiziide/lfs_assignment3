@@ -79,7 +79,6 @@ int saveAux(struct LinkedListNode *node, FILE *fp, char *savePath){
     if (!current_savePath) { return -EFAULT; }
     strncpy(current_savePath, savePath, len);
     strcat(current_savePath, node->entry->name);
-    //if (node != root) { current_savePath = strcat(current_savePath, "/"); }
     fprintf(fp, "|");
     fprintf(fp, "%s|" , current_savePath);
     fprintf(fp, "%d|", node->entry->isFile);
@@ -90,6 +89,7 @@ int saveAux(struct LinkedListNode *node, FILE *fp, char *savePath){
     if (node->entry->isFile && node->entry->contents != NULL) {
         fprintf(fp, "%s", node->entry->contents);
     }
+    if (node->entry->isFile && node->entry->contents != NULL) { fprintf(fp, "%s", node->entry->contents); }
     if (!node->entry->isFile && node->entry->entries) {
         if (!node->entry->entries->head == NULL) {
             struct LinkedListNode *child = node->entry->entries->head;
@@ -197,7 +197,6 @@ int makeEntry(const char *path, bool isFile) {
             new_node->entry->entries->tail = NULL;
             new_node->entry->entries->num_entries = 0;
         } else { new_node->entry->contents = NULL; }
-
         new_node->next = NULL;
         new_node->prev = parent->entry->entries->tail;
         if (new_node->prev) { new_node->prev->next = new_node; }

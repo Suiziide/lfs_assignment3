@@ -85,8 +85,8 @@ int saveAux(struct LinkedListNode *node, FILE *fp, char *savePath){
     fprintf(fp, "%d|", node->entry->isFile);
     fprintf(fp, "%d|", node->entry->id);
     fprintf(fp, "%ld|", node->entry->size);
-    fprintf(fp, "%ld|", node->entry->modtime);
     fprintf(fp, "%ld|", node->entry->actime); 
+    fprintf(fp, "%ld|", node->entry->modtime);
     if (node->entry->isFile && node->entry->contents != NULL) { fprintf(fp, "%s", node->entry->contents); }
     if (!node->entry->isFile && node->entry->entries) {
         if (node->entry->entries->head != NULL) {

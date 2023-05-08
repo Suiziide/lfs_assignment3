@@ -468,8 +468,7 @@ int lfs_write(const char *path, const char *buf, size_t size, off_t offset, stru
     current->entry->modtime = time(NULL);
     updateDirSizesToRoot(current->entry->parent, (size - oldSize));
     int res = saveTree(root);
-    if (res != 0) { return res; }
-    return size;
+    return (res != 0) ? res : size;
 }
 
 int lfs_rename(const char *from, const char *to) {

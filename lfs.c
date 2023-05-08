@@ -43,10 +43,10 @@ struct lfs_entry {
     struct LinkedListNode *parent;
     size_t size;
     bool isFile; 
-    char *contents;
-    struct LinkedList *entries; 
-    int id;
-    u_int64_t actime; 
+    char *contents;     
+    struct LinkedList *entries;
+    int id; 
+    u_int64_t actime;
     u_int64_t modtime;
 };
 
@@ -73,23 +73,25 @@ int generateId() { return CURRENT_ID++; }
 int saveAux(struct LinkedListNode *node, FILE *fp, char *savePath){
     if (node == NULL) { return 0; }
     size_t len;
-    if (node != root) { len = strlen(savePath) + strlen(node->entry->name) + 2; } 
+    if (node != root) { len = strlen(savePath) + strlen(node->entry->name) + 2; }
     else { len = strlen(savePath) + strlen(node->entry->name) + 1; }
     char *current_savePath = malloc(len);
     if (!current_savePath) { return -EFAULT; }
     strncpy(current_savePath, savePath, len);
     strcat(current_savePath, node->entry->name);
-    if (node != root) { current_savePath = strcat(current_savePath, "/"); }
+    //if (node != root) { current_savePath = strcat(current_savePath, "/"); }
     fprintf(fp, "|");
     fprintf(fp, "%s|" , current_savePath);
     fprintf(fp, "%d|", node->entry->isFile);
     fprintf(fp, "%d|", node->entry->id);
     fprintf(fp, "%ld|", node->entry->size);
-    fprintf(fp, "%ld|", node->entry->modtime);
     fprintf(fp, "%ld|", node->entry->actime); 
-    if (node->entry->isFile && node->entry->contents != NULL) { fprintf(fp, "%s", node->entry->contents); }
+    fprintf(fp, "%ld|", node->entry->modtime);
+    if (node->entry->isFile && node->entry->contents != NULL) {
+        fprintf(fp, "%s", node->entry->contents);
+    }
     if (!node->entry->isFile && node->entry->entries) {
-        if (node->entry->entries->head != NULL) {
+        if (!node->entry->entries->head == NULL) {
             struct LinkedListNode *child = node->entry->entries->head;
             while (child != NULL) {
                 saveAux(child, fp, current_savePath);
@@ -120,7 +122,6 @@ struct LinkedListNode *findEntry(const char *path) {
     struct LinkedListNode *current = root;
     size_t len = strlen(path) + 1;
     char *current_path = malloc(len);
-    if (!current_path) { return NULL; }
     strncpy(current_path, path, len);
     current_path[len-1] = '\0';
     char *token = strtok(current_path, "/");
@@ -139,7 +140,7 @@ struct LinkedListNode *findTokenInCurrent(struct LinkedListNode *current, char *
         current = current->next;
     }
     return current;
-}
+}	
 
 int makeEntry(const char *path, bool isFile) {
     size_t len = strlen(path) + 1;
@@ -199,13 +200,9 @@ int makeEntry(const char *path, bool isFile) {
 
         new_node->next = NULL;
         new_node->prev = parent->entry->entries->tail;
-        if (new_node->prev) {
-            new_node->prev->next = new_node;
-        }
+        if (new_node->prev) { new_node->prev->next = new_node; }
         parent->entry->entries->tail = new_node;
-        if (!parent->entry->entries->head) {
-            parent->entry->entries->head = new_node;
-        }
+        if (!parent->entry->entries->head) { parent->entry->entries->head = new_node; }
         ++parent->entry->entries->num_entries;
     } else {
         free(current_path);
@@ -255,17 +252,13 @@ int removeEntry(struct LinkedListNode *current) {
 
 int rmThisEntry(struct LinkedListNode *current) {
     int result = removeEntry(current);
-    updateDirSizesToRoot(current->entry->parent, -current->entry->size);
     if (result < 0) { return result; }
-    size_t pSize = current->entry->parent->entry->size;
-    pSize = pSize - current->entry->size;
-    if (!current->entry->isFile) {  
+    updateDirSizesToRoot(current->entry->parent, -current->entry->size);
+    if (!current->entry->isFile) { 
         free(current->entry->entries->head);
         free(current->entry->entries->tail);
         free(current->entry->entries);
-    } else {    
-        free(current->entry->contents);
-    }
+    } else { free(current->entry->contents); }
     free(current->entry);
     free(current);
     return 0;
@@ -296,7 +289,7 @@ int loadFromDisk() {
     int filesize = ftell(fp);
     fseek(fp, 0, SEEK_SET);
     char fBuf[filesize+1];
-    if (fread(fBuf, 1, filesize, fp) != (size_t) filesize) {
+    if (fread(fBuf, 1, filesize, fp) != filesize) {
         fclose(fp);
         return -EIO; 
     }
@@ -319,36 +312,36 @@ int loadFromDisk() {
             char temp[i-oldPipe];
             ++tokenType;
             switch (tokenType) {
-                case 1: 
+                case 1:
                     path = malloc(i - oldPipe);
                     if (!path) { return -EFAULT; }
                     strncpy(path, &fBuf[oldPipe+1], (size_t) (i-oldPipe-1));
                     path[i-oldPipe-1] = '\0';
                     break;
-                case 2: 
+                case 2:
                     isFile = (fBuf[i-1] == '1');
                     break;
-                case 3: 
+                case 3:
                     strncpy(temp, &fBuf[oldPipe+1], (size_t) (i-oldPipe-1));
                     temp[i-oldPipe-1] = '\0';
                     id = atoi(temp);
                     break;
-                case 4: 
+                case 4:
                     strncpy(temp, &fBuf[oldPipe+1], (size_t) (i-oldPipe-1));
                     temp[i-oldPipe-1] = '\0';
                     size = (size_t) atoi(temp);
                     break;
-                case 5: 
+                case 5:
                     strncpy(temp, &fBuf[oldPipe+1], (size_t) (i-oldPipe-1));
                     temp[i-oldPipe-1] = '\0';
                     actime = (u_int64_t) atoi(temp);
                     break;
-                case 6: 
+                case 6:
                     strncpy(temp, &fBuf[oldPipe+1], (size_t) (i-oldPipe-1));
                     temp[i-oldPipe-1] = '\0';
                     modtime = (u_int64_t) atoi(temp);
                     break;
-                case 7: 
+                case 7:
                     if(i-oldPipe <= 1) { break; }
                     contents = malloc(i - oldPipe);
                     if (!contents) { 
@@ -385,7 +378,6 @@ int loadFromDisk() {
 int lfs_getattr(const char *path, struct stat *stbuf) {
     struct LinkedListNode *current = findEntry(path);
     if (current == NULL) { return -ENOENT; }
-
     memset(stbuf, 0, sizeof(struct stat));
     if (strcmp(path, "/") == 0) {
         stbuf->st_mode = S_IFDIR | 0755;
@@ -406,13 +398,11 @@ int lfs_getattr(const char *path, struct stat *stbuf) {
     return 0;
 }
 
-int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi ) {
+int lfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) {
     struct LinkedListNode *current;
     if (!(current = findEntry(path))) { return -ENOENT; }
-
     filler(buf, ".", NULL, 0);
     filler(buf, "..", NULL, 0);
-
     if (current->entry->entries) {
         struct LinkedListNode *entryToAdd = current->entry->entries->head;
         while (entryToAdd != NULL) {
@@ -425,83 +415,77 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
 
 int lfs_mkdir(const char *path, mode_t mode) {
     int res = makeEntry(path, false);
-    saveTree(root);
-    return res;
+    if (res != 0) { return res; }
+    return saveTree(root);
 }
 
 int lfs_rmdir(const char *path) {
-    struct LinkedListNode *current = findEntry(path);
-    int res = rmThisEntry(current);
-    saveTree(root);
-    return res;
+    int res = rmThisEntry(findEntry(path));    
+    if (res != 0) { return res; }
+    return saveTree(root);
 }
 
-int lfs_mknod(const char *path, mode_t mode, dev_t device) {
+int lfs_mknod(const char *path, mode_t mode, dev_t device) { 
     int res = makeEntry(path, true);
-    saveTree(root);
-    return res;
+    if (res != 0) { return res; }
+    return saveTree(root);
 }
 
 int lfs_unlink(const char *path) {
-    struct LinkedListNode *current = findEntry(path);
-    int res = rmThisEntry(current);
-    saveTree(root);
-    return res;
+    int res = rmThisEntry(findEntry(path));    
+    if (res != 0) { return res; }
+    return saveTree(root);
 }
 
 int lfs_truncate(const char *path, off_t offset) {
     struct LinkedListNode *current = findEntry(path);
     if (current == NULL) { return -ENOENT; }
     if (!current->entry->isFile) { return -EISDIR; }
-    if (current->entry->contents == NULL) { return 0; }
     size_t oldSize = current->entry->size;
-    char *content = current->entry->contents;
-    if ((long) oldSize < offset) {
-        char *tmp = malloc(offset);
-        if (tmp == NULL) { return -EFAULT; }
-        memset(tmp, '\0', offset);
-        strcpy(tmp, content);
-        current->entry->contents = tmp;
-        free(content);
+    if (current->entry->contents == NULL) {
+        current->entry->contents = calloc(offset, sizeof(char));
+        if (!current->entry->contents) { return -EFAULT;  }
+    } else if (oldSize < offset) {
+        char *newContent = calloc(offset + 1, sizeof(char));
+        if (!newContent) { return -EFAULT; }
+        memcpy(newContent, current->entry->contents, oldSize);
+        free(current->entry->contents);
+        current->entry->contents = newContent;
     }
-    current->entry->contents[offset] = '\0';
     current->entry->size = offset;
-    updateDirSizesToRoot(current->entry->parent, -(oldSize - offset));
-    saveTree(root);
-    return 0;
+    updateDirSizesToRoot(current->entry->parent, (offset - oldSize)); 
+    return saveTree(root);
 }
 
 int lfs_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
     struct LinkedListNode *current = (struct LinkedListNode*) fi->fh;
     size_t oldSize = current->entry->size;
-    char* tmp = malloc(size+3);
+    char *tmp = calloc(size+1, sizeof(char));
     if (tmp == NULL) { return -EFAULT; }
     strncpy(tmp, buf, size);
-    tmp[size] = '\0';
     free(current->entry->contents);
     current->entry->contents = tmp;
     current->entry->size = size;
     current->entry->modtime = time(NULL);
-    updateDirSizesToRoot(current->entry->parent, -(oldSize - size));
-    saveTree(root);
+    updateDirSizesToRoot(current->entry->parent, (size - oldSize));
+    int res = saveTree(root);
+    if (res != 0) { return res; }
     return size;
 }
 
 int lfs_rename(const char *from, const char *to) {
     struct LinkedListNode *new_node = findEntry(to);
-    if (new_node) { return -EEXIST; }
+    if (new_node) { return -EEXIST; } 
     struct LinkedListNode *old_node = findEntry(from);
-    if (!old_node) { return -ENOENT; }
-
+    if (!old_node) { return -ENOENT; } 
     int res = makeEntry(to, old_node->entry->isFile);
     if (res) { return res; }
     new_node = findEntry(to);
-
     new_node->entry->id = old_node->entry->id;
     new_node->entry->size = old_node->entry->size;
     new_node->entry->actime = old_node->entry->actime;
     new_node->entry->modtime = old_node->entry->modtime;
-    updateDirSizesToRoot(new_node->entry->parent, new_node->entry->size);
+    updateDirSizesToRoot(new_node->entry->parent, new_node->entry->size); 
     if (!old_node->entry->isFile) {
         struct LinkedList *tmp = new_node->entry->entries;
         new_node->entry->entries = old_node->entry->entries;
@@ -513,10 +497,11 @@ int lfs_rename(const char *from, const char *to) {
         new_node->entry->contents = old_node->entry->contents;
         old_node->entry->contents = tmp;
         lfs_unlink(from);
-    }
+    } 
     return 0;
 }
 
+//Permission
 int lfs_open(const char *path, struct fuse_file_info *fi ) {
     struct LinkedListNode *foundFile;
     if (!(foundFile = findEntry(path))) { return -ENOENT; }
@@ -540,17 +525,16 @@ int lfs_utime(const char *path, struct utimbuf *times) {
     struct LinkedListNode *current = findEntry(path);
     current->entry->actime = times->actime;
     current->entry->modtime = times->modtime;
-    saveTree(root);
-    return 0;
+    return saveTree(root);
 }
 
 int init() {
     root = malloc(sizeof(struct LinkedListNode));
     if (!root) { return -EFAULT; }
     root->entry = malloc(sizeof(struct lfs_entry));
-    if (!root->entry) {
+    if (!root->entry) { 
         free(root);
-        return -EFAULT;
+        return -EFAULT; 
     }
     strcpy(root->entry->name, "/");
     root->entry->parent = NULL;
@@ -560,10 +544,10 @@ int init() {
     root->entry->modtime = time(NULL);
     root->entry->id = generateId();
     root->entry->entries = malloc(sizeof(struct LinkedList));
-    if (!root->entry->entries) {
+    if (!root->entry->entries) { 
         free(root->entry);
         free(root);
-        return -EFAULT;
+        return -EFAULT; 
     }
     root->entry->entries->head = NULL;
     root->entry->entries->tail = NULL;
@@ -571,7 +555,7 @@ int init() {
 
     int res = loadFromDisk();
     if (res == -1) {
-        printf("disk.img not found - creating new disk image file\n");
+        printf("Disk.img file does not exists but continues\n");
         res = 0;
     } else if (res != 0) {
         free(root->entry->entries);
@@ -582,10 +566,10 @@ int init() {
 }
 
 int main(int argc, char *argv[]) {
-    int res = init();
-    if (res != 0) { return res; }
+    int res = 0;
+    if ((res = init()) != 0) { return res; }
     fuse_main(argc, argv, &lfs_oper);
-    saveTree(root);
+    res = saveTree(root);
     dfsDelete(root);
-    return 0;
+    return res;
 }

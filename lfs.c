@@ -79,19 +79,17 @@ int saveAux(struct LinkedListNode *node, FILE *fp, char *savePath){
     if (!current_savePath) { return -EFAULT; }
     strncpy(current_savePath, savePath, len);
     strcat(current_savePath, node->entry->name);
+    if (node != root) { current_savePath = strcat(current_savePath, "/"); }
     fprintf(fp, "|");
     fprintf(fp, "%s|" , current_savePath);
     fprintf(fp, "%d|", node->entry->isFile);
     fprintf(fp, "%d|", node->entry->id);
     fprintf(fp, "%ld|", node->entry->size);
-    fprintf(fp, "%ld|", node->entry->actime); 
     fprintf(fp, "%ld|", node->entry->modtime);
-    if (node->entry->isFile && node->entry->contents != NULL) {
-        fprintf(fp, "%s", node->entry->contents);
-    }
+    fprintf(fp, "%ld|", node->entry->actime);
     if (node->entry->isFile && node->entry->contents != NULL) { fprintf(fp, "%s", node->entry->contents); }
     if (!node->entry->isFile && node->entry->entries) {
-        if (!node->entry->entries->head == NULL) {
+        if (node->entry->entries->head != NULL) {
             struct LinkedListNode *child = node->entry->entries->head;
             while (child != NULL) {
                 saveAux(child, fp, current_savePath);
@@ -108,10 +106,10 @@ int saveTree(struct LinkedListNode *root){
     FILE *fp = fopen("disk.img", "wb");
     if (!fp) { return errno; }
     int res;
-    if ((res = saveAux(root, fp, savePath)) != 0) { 
+    if ((res = saveAux(root, fp, savePath)) != 0) {
         fclose(fp);
         return res;
-    } 
+    }
     fprintf(fp, "|");
     fclose(fp);
     return 0;
@@ -122,6 +120,7 @@ struct LinkedListNode *findEntry(const char *path) {
     struct LinkedListNode *current = root;
     size_t len = strlen(path) + 1;
     char *current_path = malloc(len);
+    if (!current_path) { return NULL; }
     strncpy(current_path, path, len);
     current_path[len-1] = '\0';
     char *token = strtok(current_path, "/");
@@ -165,7 +164,6 @@ int makeEntry(const char *path, bool isFile) {
         } 
         token = strtok(NULL, "/");
     }
-
     if (!seekOp && token == NULL) {
         struct LinkedListNode *new_node = malloc(sizeof(struct LinkedListNode));
         if (!new_node) { 
@@ -252,7 +250,8 @@ int removeEntry(struct LinkedListNode *current) {
 int rmThisEntry(struct LinkedListNode *current) {
     int result = removeEntry(current);
     if (result < 0) { return result; }
-    updateDirSizesToRoot(current->entry->parent, -current->entry->size);
+    updateDirSizesToRoot(current->entry->parent, -current->entry->size); // maybe move this above the if ???????
+
     if (!current->entry->isFile) { 
         free(current->entry->entries->head);
         free(current->entry->entries->tail);
@@ -281,16 +280,16 @@ void dfsDelete(struct LinkedListNode* node) {
     }
 }
 
-int loadFromDisk() { 
+int loadFromDisk() {
     FILE *fp;
     if (!(fp = fopen("disk.img", "rb"))) { return -1; }
     fseek(fp, 0, SEEK_END);
     int filesize = ftell(fp);
     fseek(fp, 0, SEEK_SET);
     char fBuf[filesize+1];
-    if (fread(fBuf, 1, filesize, fp) != filesize) {
+    if (fread(fBuf, 1, filesize, fp) != (size_t) filesize) {
         fclose(fp);
-        return -EIO; 
+        return -EIO;
     }
     fclose(fp);
     fBuf[filesize] = '\0';
@@ -343,7 +342,7 @@ int loadFromDisk() {
                 case 7:
                     if(i-oldPipe <= 1) { break; }
                     contents = malloc(i - oldPipe);
-                    if (!contents) { 
+                    if (!contents) {
                         free(path);
                         return -EFAULT;
                     }
@@ -355,7 +354,7 @@ int loadFromDisk() {
                 tokenType %= 7;
                 makeEntry(path, isFile);
                 current = findEntry(path);
-                if (!current) { 
+                if (!current) {
                     free(path);
                     free(contents);
                     return -ENOENT;
@@ -366,7 +365,7 @@ int loadFromDisk() {
                 current->entry->modtime = modtime;
                 current->entry->contents = contents;
                 free(path);
-            }  
+            }
             oldPipe = i;
         }
     }
@@ -443,32 +442,33 @@ int lfs_truncate(const char *path, off_t offset) {
     size_t oldSize = current->entry->size;
     if (current->entry->contents == NULL) {
         current->entry->contents = calloc(offset, sizeof(char));
-        if (!current->entry->contents) { return -EFAULT;  }
+        if (!current->entry->contents) { return -EFAULT; }
     } else if (oldSize < offset) {
-        char *newContent = calloc(offset + 1, sizeof(char));
+        char *newContent = calloc(offset, sizeof(char));
         if (!newContent) { return -EFAULT; }
-        memcpy(newContent, current->entry->contents, oldSize);
+        strncpy(newContent, current->entry->contents, oldSize);
         free(current->entry->contents);
         current->entry->contents = newContent;
-    }
+    } else { current->entry->contents[offset] = '\0'; }
     current->entry->size = offset;
-    updateDirSizesToRoot(current->entry->parent, (offset - oldSize)); 
+    updateDirSizesToRoot(current->entry->parent, offset - oldSize);
     return saveTree(root);
 }
 
 int lfs_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
     struct LinkedListNode *current = (struct LinkedListNode*) fi->fh;
     size_t oldSize = current->entry->size;
-    char *tmp = calloc(size+1, sizeof(char));
+    char* tmp = malloc(size+3);
     if (tmp == NULL) { return -EFAULT; }
     strncpy(tmp, buf, size);
+    tmp[size] = '\0';
     free(current->entry->contents);
     current->entry->contents = tmp;
     current->entry->size = size;
     current->entry->modtime = time(NULL);
-    updateDirSizesToRoot(current->entry->parent, (size - oldSize));
+    updateDirSizesToRoot(current->entry->parent, -(oldSize - size));
     int res = saveTree(root);
-    return (res != 0) ? res : size;
+    return (res == 0) ? size : res;
 }
 
 int lfs_rename(const char *from, const char *to) {
@@ -553,7 +553,7 @@ int init() {
 
     int res = loadFromDisk();
     if (res == -1) {
-        printf("Disk.img file does not exists but continues\n");
+        printf("Disk.img file does not exists - creating empty one\n");
         res = 0;
     } else if (res != 0) {
         free(root->entry->entries);
@@ -564,8 +564,8 @@ int init() {
 }
 
 int main(int argc, char *argv[]) {
-    int res = 0;
-    if ((res = init()) != 0) { return res; }
+    int res = init();
+    if (res != 0) { return res; }
     fuse_main(argc, argv, &lfs_oper);
     res = saveTree(root);
     dfsDelete(root);
